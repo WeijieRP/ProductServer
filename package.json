@@ -4,11 +4,14 @@
   "description": "",
   "main": "Server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1", 
-    "start":"node Server.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node Server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
 }
