@@ -1,95 +1,120 @@
 const express = require("express");
-const mysql2 = require("mysql2/promise");
-const app = express();
+const mysql = require("mysql2/promise");
 const cors = require("cors");
-require("dotenv").config()
+require("dotenv").config();
+
+const app = express();
 app.use(express.json());
+app.use(cors());
 
-const PORT = process.env.DB_PORT ||3000;
-const dbConfig = mysql2.createPool({
-    DB_HOST : process.env.DB_HOST,
-    DB_PASSWORD:process.env.DB_PASSWORD,
-    DB_PORT:process.env.DB_PORT,
-    DB_USER:process.env.DB_USER,
-    DB_NAME:process.env.DB_NAME, 
-    connectTimeout:1000,
-})
-// -------------------- CORS --------------------
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  process.env.REACT_APP_API_URL,
-].filter(Boolean);
+const PORT = process.env.PORT || 3000;
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      // school deployment: allow all
-      return cb(null, true);
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+// ✅ Create Pool Properly
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  waitForConnections: true,
+  connectionLimit: 10,
+});
 
+// ================== GET ALL ==================
+app.get("/", async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT * FROM product");
+    if (rows.length === 0)
+      return res.json({ message: "No products found" });
 
-// get all the proeducts list back 
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.get("/", async(req , res)=>{
-    const connections = await mysql2.createConnection(dbConfig);
-    const [rows]= await connections.execute("SELECT * FROM products");
-    if(rows.length===0) return res.json({message :"There is nth in the database"});
-    return res.json(rows);// return the json data 
-})
+// ================== GET BY ID ==================
+app.get("/product/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
 
-//get the details for each products detaols 
+    const [rows] = await db.execute(
+      "SELECT * FROM product WHERE id = ?",
+      [id]
+    );
 
-app.get("/product/:id", async(req , res)=>{
-    const {id} = req.params;
-    const connections = await mysql2.createConnection(dbConfig);
-    const [rows] = await connections.execute("SELECT * FROM products WHERE productID = ?", [Number(id)]);
-    if(rows.length===0) return res.json({message :"Product ID with " + id + "is not found in the database"});
-    return res.json(rows)
-})
+    if (rows.length === 0)
+      return res.json({ message: `Product ID ${id} not found` });
 
-app.post("/product", async(req , res)=>{
-    const {productname , price , qty } = req.body;
-    // const{ ids} = req.params;
-    const connections = await mysql2.createConnection(dbConfig);
-    const [rows] = await connections.execute("INSERT INTO product (productname , price , qty) VALUES(?,?,?)", [productname , price ,qty]);
-    if(rows.affectedRows===0) return res.json({message:"Product Insertion operation failed"});
-    return res.json(rows) // return  back he reson the insert res
-    // const [findexistproduct] = await connections.execute("SELECT * FROM product WHERE pr")
-})
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-///app
+// ================== INSERT ==================
+app.post("/product", async (req, res) => {
+  try {
+    const { productname, price, qty } = req.body;
 
-app.delete("/product/:id", async(req , res)=>{
-    const {ids} = Number(req.params);
-    const connections = await mysql2.createConnection(dbConfig);
-    const [rows] = await connections.execute("DELETE * FROM product WHERE productID=?", [ids]);
-    if(rows.affectedRows===0) return res.json({message : "Product Deletion operation failed"});
-    return res.json(rows) /// 
-    // returnn the json respoje
-})
-// update the prodycy with the ids
+    const [result] = await db.execute(
+      "INSERT INTO product (productname, price, qty) VALUES (?, ?, ?)",
+      [productname, price, qty]
+    );
 
-app.put("/product/:id",async(req , res)=>{
-    const {id}=Number(req.params);
-    const {productname , price , qty} = req.body;
-    const connections = await mysql2.createConnection(dbConfig);
-    const [rows] = await connections.execute("UPDATE FROM product productname =? , price=? , qty=? WHERE productID=?",[productname , price , qty , id]);
-    if(rows.affectedRows===0) return res.json({message:"Product Update operation failed"});
-    return res.json(rows);// return the reponse 
-})
+    res.json({
+      message: "Product inserted successfully",
+      insertId: result.insertId,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
+// ================== DELETE ==================
+app.delete("/product/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
 
-// 404 routes is the last routes 
-app.use((req , res , next)=>{
-    res.status(404).json({message:"404 error routes "})
-})
-app.listen(PORT , ()=>{
-    console.log("Server runing at ", PORT)
-})
+    const [result] = await db.execute(
+      "DELETE FROM product WHERE id = ?",
+      [id]
+    );
+
+    if (result.affectedRows === 0)
+      return res.json({ message: "Product not found" });
+
+    res.json({ message: "Product deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== UPDATE ==================
+app.put("/product/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { productname, price, qty } = req.body;
+
+    const [result] = await db.execute(
+      "UPDATE product SET productname=?, price=?, qty=? WHERE id=?",
+      [productname, price, qty, id]
+    );
+
+    if (result.affectedRows === 0)
+      return res.json({ message: "Product not found" });
+
+    res.json({ message: "Product updated successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== 404 ==================
+app.use((req, res) => {
+  res.status(404).json({ message: "404 route not found" });
+});
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
